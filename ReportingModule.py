@@ -7,6 +7,7 @@ import gc
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
+from collections import Counter
 
 
 class ReportingModule:
@@ -23,8 +24,26 @@ class ReportingModule:
         @return: Mean node degree.
         @rtype:  float
         """
-        degrees = [d for _, d in ntwk.degree()]
-        return sum(degrees) / len(degrees)
+        node_count = ntwk.number_of_nodes()
+        if node_count == 0:
+            return 0.0
+        return (2 * ntwk.number_of_edges()) / node_count
+
+    def _get_degree_counts(self, ntwk):
+        """
+        Build a frequency distribution for node degrees.
+
+        @param ntwk: The network to analyse.
+        @type  ntwk: nx.Graph
+        @return: Tuple of (degree values array, count per degree array).
+        @rtype:  tuple[np.ndarray, np.ndarray]
+        """
+        degree_sequence = np.fromiter((d for _, d in ntwk.degree()), dtype=int)
+        if degree_sequence.size == 0:
+            return np.array([], dtype=int), np.array([], dtype=int)
+        degree_counts = np.bincount(degree_sequence)
+        degrees = np.arange(degree_counts.size)
+        return degrees, degree_counts
 
     def get_degree_distribution(self, ntwk):
         """
@@ -35,10 +54,25 @@ class ReportingModule:
         @return: Tuple of (degree values array, count per degree array).
         @rtype:  tuple[np.ndarray, np.ndarray]
         """
-        degree_sequence = sorted([d for _, d in ntwk.degree()], reverse=True)
-        degree_counts = np.bincount(degree_sequence)
-        degrees = np.arange(len(degree_counts))
-        return degrees, degree_counts
+        return self._get_degree_counts(ntwk)
+
+    def _get_clique_size_counts(self, ntwk, max_clique_size=None):
+        """
+        Count maximal cliques by size.
+
+        @param ntwk: The network to analyse.
+        @type  ntwk: nx.Graph
+        @param max_clique_size: Optional upper bound on clique sizes to report
+        @type  max_clique_size: int or None. Contains the max allowed clique size
+        @return: Counter keyed by clique size.
+        @rtype:  Counter
+        """
+        clique_size_counts = Counter()
+        for clique in nx.find_cliques(ntwk):
+            clique_size = len(clique)
+            if max_clique_size is None or clique_size <= max_clique_size:
+                clique_size_counts[clique_size] += 1
+        return clique_size_counts
 
     def visualise_cliques_distribution(self, ntwk, max_clique_size=None):
         """
@@ -50,16 +84,9 @@ class ReportingModule:
         @param ntwk: The network to analyse.
         @type  ntwk: nx.Graph
         @param max_clique_size: Optional upper bound on clique sizes to report.
-        @type  max_clique_size: int or None
+        @type  max_clique_size: int or None. Contains the max allowed clique size
         """
-        cliques = (sorted(c) for c in nx.find_cliques(ntwk))
-        if max_clique_size is not None:
-            cliques = (c for c in cliques if len(c) <= max_clique_size)
-
-        clique_size_counts = {}
-        for clique in cliques:
-            size = len(clique)
-            clique_size_counts[size] = clique_size_counts.get(size, 0) + 1
+        clique_size_counts = self._get_clique_size_counts(ntwk, max_clique_size)
 
         if not clique_size_counts:
             print("No cliques found.")
@@ -77,6 +104,11 @@ class ReportingModule:
             return
         normalized_counts = counts / total
 
+        print(
+            "Clique summary: "
+            f"total maximal cliques={int(total)}, "
+            f"dominant size={sizes[np.argmax(counts)]}"
+        )
         print("Clique sizes present: " + ", ".join(map(str, sizes)))
 
         fig, ax = plt.subplots(figsize=(12, 5))
@@ -90,7 +122,14 @@ class ReportingModule:
             alpha=0.9,
         )
 
-        for x, y in zip(sizes, normalized_counts):
+        if len(sizes) <= 10:
+            annotated_indexes = range(len(sizes))
+        else:
+            annotated_indexes = np.argsort(normalized_counts)[-8:]
+
+        for index in annotated_indexes:
+            x = sizes[index]
+            y = normalized_counts[index]
             ax.text(x, y + 0.002, f"{y:.2%}", ha="center", va="bottom", fontsize=9)
 
         ax.set_title("Normalized Clique Size Distribution (Bar Plot)")
@@ -117,11 +156,20 @@ class ReportingModule:
         @type  ntwk: nx.Graph
         """
         degrees, degree_counts = self.get_degree_distribution(ntwk)
-        fig, ax = plt.subplots()
-        ax.bar(degrees, degree_counts, width=0.80, color="b")
+        if degree_counts.size == 0:
+            print("No degree distribution available.")
+            return
+
+        fig, ax = plt.subplots(figsize=(12, 5))
+        if degree_counts.size <= 60:
+            ax.bar(degrees, degree_counts, width=0.80, color="#3182bd", alpha=0.9)
+        else:
+            ax.step(degrees, degree_counts, where="mid", color="#08519c", linewidth=1.8)
+            ax.fill_between(degrees, degree_counts, step="mid", alpha=0.2, color="#6baed6")
         ax.set_title("Degree Distribution")
         ax.set_xlabel("Degree")
         ax.set_ylabel("Count")
+        ax.grid(axis="y", linestyle="--", alpha=0.3)
         plt.tight_layout()
         plt.show()
         plt.close(fig)
@@ -137,6 +185,8 @@ class ReportingModule:
         @param ntwk: The network to log.
         """
         print(label)
+        print("Total nodes: " + str(ntwk.number_of_nodes()))
+        print("Total edges: " + str(ntwk.number_of_edges()))
         print("Average degree: " + str(self.get_avg_degree_dist(ntwk)))
         self.visualise_degree_distribution(ntwk)
         self.visualise_cliques_distribution(ntwk)
