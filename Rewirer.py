@@ -4,12 +4,21 @@ Rewirer module.
 Provides clique-based rewiring of undirected graphs while preserving
 the original mean degree within a configurable tolerance band.
 """
+from __future__ import annotations
+
 import random as rng
-import networkx as nx
 from itertools import combinations
+from typing import Dict, List, Sequence, Tuple
+
+import networkx as nx
 
 
-def _init_loop_state(config):
+OUTCOME_ACCEPTED = "accepted"
+OUTCOME_FULL_CLIQUE = "full_clique_groups"
+OUTCOME_TOLERANCE_REJECTED = "tolerance_rejections"
+
+
+def _init_loop_state(config: Dict[str, object]):
     """
     Build the mutable state dictionary used throughout the rewiring loop.
 
@@ -29,7 +38,10 @@ def _init_loop_state(config):
     }
 
 
-def _build_run_stats(config, state):
+def _build_run_stats(
+    config: Dict[str, object],
+    state: Dict[str, object],
+):
     """
     Assemble the public-facing statistics dictionary from run data.
 
@@ -53,7 +65,11 @@ def _build_run_stats(config, state):
     }
 
 
-def _tolerance_exceeded(new_avg_degree, original_avg_degree, degree_tolerance):
+def _tolerance_exceeded(
+    new_avg_degree: float,
+    original_avg_degree: float,
+    degree_tolerance: float,
+):
     """
     Return True if the proposed mean degree violates the tolerance band.
 
@@ -70,7 +86,7 @@ def _tolerance_exceeded(new_avg_degree, original_avg_degree, degree_tolerance):
     )
 
 
-def _loop_should_continue(state, config):
+def _loop_should_continue(state: Dict[str, object], config: Dict[str, object]):
     """
     Return True while the rewiring loop may still make progress.
 
@@ -78,13 +94,16 @@ def _loop_should_continue(state, config):
     @param config: Immutable run configuration.
     @return: True if neither stopping criterion has been reached.
     """
-    return (
+    return bool(
         state["consecutive_failures"] < config["max_consecutive_failures"]
         and state["total_attempts"] < config["max_total_attempts"]
     )
 
 
-def _get_termination_reason(state, config):
+def _get_termination_reason(
+    state: Dict[str, object],
+    config: Dict[str, object],
+):
     """
     Determine which stopping criterion ended the rewiring loop.
 
@@ -109,7 +128,7 @@ class Rewirer:
     @type  ntwk: nx.Graph
     """
 
-    def __init__(self, ntwk):
+    def __init__(self, ntwk: nx.Graph):
         """
         Initialise the rewirer with a target graph.
 
@@ -119,12 +138,11 @@ class Rewirer:
         self.ntwk = ntwk
         self.last_run_stats = None
 
-
     def rewire_network_cliques(
         self,
-        target_clique_size=5,
-        degree_tolerance=0.1,
-        print_stats=False,
+        target_clique_size: int = 5,
+        degree_tolerance: float = 0.1,
+        print_stats: bool = False,
     ):
         """
         Insert cliques of *target_clique_size* nodes into the graph.
@@ -155,7 +173,11 @@ class Rewirer:
         """
         return self.last_run_stats
 
-    def _setup_rewiring_state(self, target_clique_size, degree_tolerance):
+    def _setup_rewiring_state(
+        self,
+        target_clique_size: int,
+        degree_tolerance: float,
+    ):
         """
         Validate preconditions and build the immutable run configuration.
 
@@ -187,7 +209,7 @@ class Rewirer:
             ),
         }
 
-    def _run_rewiring_loop(self, config):
+    def _run_rewiring_loop(self, config: Dict[str, object]):
         """
         Drive the main rewiring loop until no further progress can be made.
 
@@ -206,7 +228,12 @@ class Rewirer:
         state["termination_reason"] = _get_termination_reason(state, config)
         return state
 
-    def _try_rewire_for_size(self, clique_size, config, state):
+    def _try_rewire_for_size(
+        self,
+        clique_size: int,
+        config: Dict[str, object],
+        state: Dict[str, object],
+    ):
         """
         Try one rewiring attempt for a specific candidate clique size.
 
@@ -234,9 +261,14 @@ class Rewirer:
             state,
             config["node_count"],
         )
-        return outcome == "accepted"
+        return outcome == OUTCOME_ACCEPTED
 
-    def _evaluate_candidate(self, group, config, edge_count):
+    def _evaluate_candidate(
+        self,
+        group: Sequence[int],
+        config: Dict[str, object],
+        edge_count: int,
+    ):
         """
         Assess whether a candidate node group can form a valid new clique.
 
@@ -252,15 +284,22 @@ class Rewirer:
             if not self.ntwk.has_edge(u, v)
         ]
         if not missing_edges:
-            return "full_clique_groups", []
+            return OUTCOME_FULL_CLIQUE, []
         new_avg_degree = (2 * (edge_count + len(missing_edges))) / config["node_count"]
         if _tolerance_exceeded(
             new_avg_degree, config["original_avg_degree"], config["degree_tolerance"]
         ):
-            return "tolerance_rejections", []
-        return "accepted", missing_edges
+            return OUTCOME_TOLERANCE_REJECTED, []
+        return OUTCOME_ACCEPTED, missing_edges
 
-    def _apply_outcome(self, outcome, missing_edges, group_key, state, node_count):
+    def _apply_outcome(
+        self,
+        outcome: str,
+        missing_edges: List[Tuple[int, int]],
+        group_key: Tuple[int, ...],
+        state: Dict[str, object],
+        node_count: int,
+    ):
         """
         Mutate loop state based on the outcome of a candidate evaluation.
 
@@ -270,7 +309,7 @@ class Rewirer:
         @param state: Mutable loop state (modified in-place).
         @param node_count: Node count for degree recalculation.
         """
-        if outcome == "accepted":
+        if outcome == OUTCOME_ACCEPTED:
             self.ntwk.add_edges_from(missing_edges)
             state["edge_count"] += len(missing_edges)
             state["final_avg_degree"] = (2 * state["edge_count"]) / node_count
@@ -300,7 +339,7 @@ class Rewirer:
         )
         print(f"  stop reason         : {s['termination_reason']}")
 
-    def _validate_preconditions(self, target_clique_size):
+    def _validate_preconditions(self, target_clique_size: int):
         """
         Raise ValueError for any condition that would prevent rewiring.
 
@@ -315,7 +354,11 @@ class Rewirer:
         if target_clique_size > self.ntwk.number_of_nodes():
             raise ValueError("target_clique_size cannot exceed the number of nodes.")
 
-    def _build_allowed_clique_sizes(self, target_clique_size, node_count):
+    def _build_allowed_clique_sizes(
+        self,
+        target_clique_size: int,
+        node_count: int,
+    ):
         """
         Build the allowed clique-size band, ordered by closeness to target.
 

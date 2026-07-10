@@ -3,11 +3,13 @@ ReportingModule module.
 
 Provides reusable network metrics and reporting helpers for the notebook.
 """
-import gc
-import numpy as np
+from __future__ import annotations
+
+from collections import Counter
+
 import matplotlib.pyplot as plt
 import networkx as nx
-from collections import Counter
+import numpy as np
 
 
 class ReportingModule:
@@ -15,7 +17,15 @@ class ReportingModule:
     Utility class for network metrics, visualisation, and run reporting.
     """
 
-    def get_avg_degree_dist(self, ntwk):
+    @staticmethod
+    def _calculate_average_degree(ntwk: nx.Graph):
+        """Return mean node degree using 2|E|/|V|, or 0.0 for empty graphs."""
+        node_count = ntwk.number_of_nodes()
+        if node_count == 0:
+            return 0.0
+        return (2 * ntwk.number_of_edges()) / node_count
+
+    def get_avg_degree_dist(self, ntwk: nx.Graph):
         """
         Compute the mean degree of all nodes in the network.
 
@@ -24,12 +34,13 @@ class ReportingModule:
         @return: Mean node degree.
         @rtype:  float
         """
-        node_count = ntwk.number_of_nodes()
-        if node_count == 0:
-            return 0.0
-        return (2 * ntwk.number_of_edges()) / node_count
+        return self._calculate_average_degree(ntwk)
 
-    def _get_degree_counts(self, ntwk):
+    def get_average_degree(self, ntwk: nx.Graph):
+        """Public alias with clearer naming for mean degree calculation."""
+        return self.get_avg_degree_dist(ntwk)
+
+    def _get_degree_counts(self, ntwk: nx.Graph):
         """
         Build a frequency distribution for node degrees.
 
@@ -45,7 +56,7 @@ class ReportingModule:
         degrees = np.arange(degree_counts.size)
         return degrees, degree_counts
 
-    def get_degree_distribution(self, ntwk):
+    def get_degree_distribution(self, ntwk: nx.Graph):
         """
         Compute the degree sequence and per-degree counts of the network.
 
@@ -56,7 +67,11 @@ class ReportingModule:
         """
         return self._get_degree_counts(ntwk)
 
-    def _get_clique_size_counts(self, ntwk, max_clique_size=None):
+    def _get_clique_size_counts(
+        self,
+        ntwk: nx.Graph,
+        max_clique_size: int | None = None,
+    ):
         """
         Count maximal cliques by size.
 
@@ -74,7 +89,172 @@ class ReportingModule:
                 clique_size_counts[clique_size] += 1
         return clique_size_counts
 
-    def visualise_cliques_distribution(self, ntwk, max_clique_size=None):
+    @staticmethod
+    def _normalise_counts(counts: np.ndarray):
+        """Return counts as proportions, or zeros when the total is zero."""
+        total = counts.sum()
+        if total == 0:
+            return np.zeros_like(counts, dtype=float)
+        return counts / total
+
+    @staticmethod
+    def _annotate_percentage_bars(ax, bars, values: np.ndarray):
+        """Annotate bar containers with percentage labels."""
+        if values.size == 0:
+            return
+
+        max_value = float(values.max()) if values.size > 0 else 0.0
+        # Ensure tiny bars still get visible labels above the baseline.
+        min_offset = 0.002
+        relative_offset = max_value * 0.015
+        y_offset = max(min_offset, relative_offset)
+
+        for bar, value in zip(bars, values):
+            x = bar.get_x() + (bar.get_width() / 2)
+            if value <= 0:
+                ax.text(
+                    x,
+                    y_offset,
+                    "No Value",
+                    ha="center",
+                    va="bottom",
+                    fontsize=7,
+                    rotation=90,
+                    alpha=0.8,
+                )
+                continue
+            y = bar.get_height()
+            ax.text(x, y + y_offset, f"{value:.1%}", ha="center", va="bottom", fontsize=8)
+
+    @staticmethod
+    def _aligned_degree_series(
+        before_degrees: np.ndarray,
+        before_counts: np.ndarray,
+        after_degrees: np.ndarray,
+        after_counts: np.ndarray,
+    ):
+        """Align degree count series onto the same x-axis for comparison plots."""
+        max_degree = -1
+        if before_degrees.size > 0:
+            max_degree = max(max_degree, int(before_degrees.max()))
+        if after_degrees.size > 0:
+            max_degree = max(max_degree, int(after_degrees.max()))
+        if max_degree < 0:
+            return np.array([], dtype=int), np.array([], dtype=int), np.array([], dtype=int)
+
+        aligned_degrees = np.arange(max_degree + 1)
+        before_aligned = np.zeros(max_degree + 1, dtype=int)
+        after_aligned = np.zeros(max_degree + 1, dtype=int)
+
+        if before_degrees.size > 0:
+            before_aligned[before_degrees] = before_counts
+        if after_degrees.size > 0:
+            after_aligned[after_degrees] = after_counts
+
+        return aligned_degrees, before_aligned, after_aligned
+
+    def visualise_before_after_comparison(
+        self,
+        before_ntwk: nx.Graph,
+        after_ntwk: nx.Graph,
+        max_clique_size: int | None = None,
+        title_prefix: str = "",
+    ):
+        """
+        Plot compact before-vs-after degree and clique distributions.
+
+        @param before_ntwk: Network state before rewiring.
+        @param after_ntwk: Network state after rewiring.
+        @param max_clique_size: Optional cap for reported clique sizes.
+        @param title_prefix: Optional text prefix in subplot titles.
+        """
+        before_degrees, before_degree_counts = self.get_degree_distribution(before_ntwk)
+        after_degrees, after_degree_counts = self.get_degree_distribution(after_ntwk)
+
+        degrees, before_aligned, after_aligned = self._aligned_degree_series(
+            before_degrees,
+            before_degree_counts,
+            after_degrees,
+            after_degree_counts,
+        )
+
+        before_clique_counts = self._get_clique_size_counts(before_ntwk, max_clique_size)
+        after_clique_counts = self._get_clique_size_counts(after_ntwk, max_clique_size)
+        clique_sizes = np.array(
+            sorted(set(before_clique_counts.keys()) | set(after_clique_counts.keys())),
+            dtype=int,
+        )
+
+        if clique_sizes.size > 0:
+            before_clique_values = np.array(
+                [before_clique_counts.get(size, 0) for size in clique_sizes],
+                dtype=float,
+            )
+            after_clique_values = np.array(
+                [after_clique_counts.get(size, 0) for size in clique_sizes],
+                dtype=float,
+            )
+            before_clique_norm = self._normalise_counts(before_clique_values)
+            after_clique_norm = self._normalise_counts(after_clique_values)
+        else:
+            before_clique_norm = np.array([], dtype=float)
+            after_clique_norm = np.array([], dtype=float)
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+        degree_ax, clique_ax = axes
+
+        if degrees.size == 0:
+            degree_ax.text(0.5, 0.5, "No degree data", ha="center", va="center")
+            degree_ax.set_axis_off()
+        else:
+            degree_ax.step(degrees, before_aligned, where="mid", linewidth=1.8, label="Before")
+            degree_ax.step(degrees, after_aligned, where="mid", linewidth=1.8, label="After")
+            degree_ax.set_title(f"{title_prefix}Degree Distribution Comparison")
+            degree_ax.set_xlabel("Degree")
+            degree_ax.set_ylabel("Count")
+            degree_ax.grid(axis="y", linestyle="--", alpha=0.3)
+            degree_ax.legend()
+
+        if clique_sizes.size == 0:
+            clique_ax.text(0.5, 0.5, "No clique data", ha="center", va="center")
+            clique_ax.set_axis_off()
+        else:
+            bar_width = 0.38
+            before_bars = clique_ax.bar(
+                clique_sizes - (bar_width / 2),
+                before_clique_norm,
+                width=bar_width,
+                label="Before",
+                alpha=0.9,
+            )
+            after_bars = clique_ax.bar(
+                clique_sizes + (bar_width / 2),
+                after_clique_norm,
+                width=bar_width,
+                label="After",
+                alpha=0.9,
+            )
+            self._annotate_percentage_bars(clique_ax, before_bars, before_clique_norm)
+            self._annotate_percentage_bars(clique_ax, after_bars, after_clique_norm)
+            clique_ax.set_title(f"{title_prefix}Clique Size Comparison (Normalised)")
+            clique_ax.set_xlabel("Clique Size")
+            clique_ax.set_ylabel("Proportion of Cliques")
+            clique_ax.set_xticks(clique_sizes)
+            clique_ax.grid(axis="y", linestyle="--", alpha=0.3)
+            clique_ax.legend()
+
+            if clique_sizes.size > 12:
+                clique_ax.tick_params(axis="x", rotation=45)
+
+        plt.tight_layout()
+        plt.show()
+        plt.close(fig)
+
+    def visualise_cliques_distribution(
+        self,
+        ntwk: nx.Graph,
+        max_clique_size: int | None = None,
+    ):
         """
         Print and plot the clique-size distribution of the network.
 
@@ -145,10 +325,8 @@ class ReportingModule:
         plt.tight_layout()
         plt.show()
         plt.close(fig)
-        del clique_size_counts, sizes, counts, normalized_counts, bars
-        gc.collect()
 
-    def visualise_degree_distribution(self, ntwk):
+    def visualise_degree_distribution(self, ntwk: nx.Graph):
         """
         Plot the degree distribution of the network as a bar chart.
 
@@ -173,10 +351,16 @@ class ReportingModule:
         plt.tight_layout()
         plt.show()
         plt.close(fig)
-        del degrees, degree_counts
-        gc.collect()
 
-    def log_network_state(self, label, ntwk):
+    @staticmethod
+    def _print_network_snapshot(label: str, ntwk: nx.Graph, avg_degree: float):
+        """Print a compact textual summary for a network state."""
+        print(label)
+        print(f"Total nodes: {ntwk.number_of_nodes()}")
+        print(f"Total edges: {ntwk.number_of_edges()}")
+        print(f"Average degree: {avg_degree}")
+
+    def log_network_state(self, label: str, ntwk: nx.Graph):
         """
         Print a labelled snapshot of a network: mean degree, degree plot,
         and clique-size distribution.
@@ -184,9 +368,7 @@ class ReportingModule:
         @param label: Descriptive heading for this snapshot.
         @param ntwk: The network to log.
         """
-        print(label)
-        print("Total nodes: " + str(ntwk.number_of_nodes()))
-        print("Total edges: " + str(ntwk.number_of_edges()))
-        print("Average degree: " + str(self.get_avg_degree_dist(ntwk)))
+        avg_degree = self.get_average_degree(ntwk)
+        self._print_network_snapshot(label, ntwk, avg_degree)
         self.visualise_degree_distribution(ntwk)
         self.visualise_cliques_distribution(ntwk)
