@@ -50,7 +50,9 @@ class NetworkGenerator:
     @staticmethod
     def _calculate_edge_probability(num_nodes: int, kmean: float):
         """Return the ER edge probability derived from kmean and node count."""
-        return kmean / num_nodes
+        if num_nodes <= 1:
+            return 0.0
+        return kmean / (num_nodes - 1)
 
     def generate_erdos_renyi_graph(
         self,

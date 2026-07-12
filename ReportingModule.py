@@ -124,7 +124,7 @@ class ReportingModule:
                 )
                 continue
             y = bar.get_height()
-            ax.text(x, y + y_offset, f"{value:.1%}", ha="center", va="bottom", fontsize=8)
+            ax.text(x, y + y_offset, f"{value:.2%}", ha="center", va="bottom", fontsize=8)
 
     @staticmethod
     def _aligned_degree_series(
