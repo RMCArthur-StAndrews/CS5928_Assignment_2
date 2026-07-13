@@ -7,6 +7,7 @@ with optional connectivity guarantees.
 """
 from __future__ import annotations
 
+import math
 import networkx as nx
 
 
@@ -81,12 +82,20 @@ class NetworkGenerator:
         if not require_connected:
             return nx.erdos_renyi_graph(self.num_nodes, self.edge_probability)
 
-        for _ in range(max_attempts):
-            ntwk = nx.erdos_renyi_graph(self.num_nodes, self.edge_probability)
+        # For large ER graphs, connectivity generally needs mean degree around
+        # log(n). Start from a connectivity-aware k and nudge it per attempt.
+        min_connected_k = math.log(self.num_nodes) + 1.5
+        starting_k = max(self.kmean, min_connected_k)
+
+        for attempt in range(max_attempts):
+            attempt_k = starting_k + (0.05 * attempt)
+            attempt_p = min(1.0, attempt_k / (self.num_nodes - 1))
+            ntwk = nx.erdos_renyi_graph(self.num_nodes, attempt_p)
             if nx.is_connected(ntwk):
                 return ntwk
 
         raise ValueError(
-            "Could not generate a connected ER graph. "
-            "Try a higher kmean or more attempts."
+            "Could not generate a connected ER graph after "
+            f"{max_attempts} attempts (num_nodes={self.num_nodes}, "
+            f"kmean={self.kmean}). Try a higher kmean or more attempts."
         )
