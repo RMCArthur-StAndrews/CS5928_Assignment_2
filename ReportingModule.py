@@ -91,7 +91,10 @@ class ReportingModule:
 
     @staticmethod
     def _normalise_counts(counts: np.ndarray):
-        """Return counts as proportions, or zeros when the total is zero."""
+        """Staticfunction to normalise a count array into a probability distribution.
+        @param counts: Array of counts to normalise.
+        @returns: Array of normalised values summing to 1.0, or zeros if input is empty.
+        """
         total = counts.sum()
         if total == 0:
             return np.zeros_like(counts, dtype=float)
@@ -99,7 +102,12 @@ class ReportingModule:
 
     @staticmethod
     def _annotate_percentage_bars(ax, bars, values: np.ndarray):
-        """Annotate bar containers with percentage labels."""
+        """Static method to annotate bar containers with percentage labels.
+
+        @param ax: The matplotlib axes to annotate.
+        @param bars: The bar containers to annotate.
+        @param values: The values corresponding to each bar.
+        """
         if values.size == 0:
             return
 
@@ -133,7 +141,14 @@ class ReportingModule:
         after_degrees: np.ndarray,
         after_counts: np.ndarray,
     ):
-        """Align degree count series onto the same x-axis for comparison plots."""
+        """Static function to align degree count series onto the same x-axis for comparison plots.
+
+        @param before_degrees: Degrees in the 'before' network.
+        @param before_counts: Counts corresponding to each degree in the 'before' network.
+        @param after_degrees: Degrees in the 'after' network.
+        @param after_counts: Counts corresponding to each degree in the 'after' network.
+        @returns: Tuple of (aligned_degrees, before_aligned, after_aligned)
+        """
         max_degree = -1
         if before_degrees.size > 0:
             max_degree = max(max_degree, int(before_degrees.max()))
@@ -331,7 +346,6 @@ class ReportingModule:
         Plot the degree distribution of the network as a bar chart.
 
         @param ntwk: The network to visualise.
-        @type  ntwk: nx.Graph
         """
         degrees, degree_counts = self.get_degree_distribution(ntwk)
         if degree_counts.size == 0:
@@ -354,7 +368,11 @@ class ReportingModule:
 
     @staticmethod
     def _print_network_snapshot(label: str, ntwk: nx.Graph, avg_degree: float):
-        """Print a compact textual summary for a network state."""
+        """Static Method to print a compact textual summary for a network state.
+        @param label: Descriptive heading for this snapshot.
+        @param ntwk: The network to summarise.
+        @param avg_degree: The average degree of the network.
+        """
         print(label)
         print(f"Total nodes: {ntwk.number_of_nodes()}")
         print(f"Total edges: {ntwk.number_of_edges()}")

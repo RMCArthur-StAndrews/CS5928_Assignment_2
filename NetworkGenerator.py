@@ -13,22 +13,18 @@ import networkx as nx
 
 class NetworkGenerator:
     """
-    Factory class for generating Erdos-Renyi (ER) random graphs.
+    Class for generating Erdos-Renyi (ER) random graphs.
 
     @param num_nodes: Number of nodes in the graph.
-    @type  num_nodes: int
     @param kmean: Target mean degree (expected number of connections per node).
-    @type  kmean: float
     """
 
     def __init__(self, num_nodes: int, kmean: float):
         """
-        Initialise the generator and derive the edge probability from kmean.
+        Method to initialise the generator and derive edge probability from kmean.
 
         @param num_nodes: Number of nodes in the graph.
-        @type  num_nodes: int
         @param kmean: Target mean degree.
-        @type  kmean: float
         """
         self._validate_inputs(num_nodes, kmean)
         self.num_nodes = num_nodes
@@ -42,7 +38,11 @@ class NetworkGenerator:
 
     @staticmethod
     def _validate_inputs(num_nodes: int, kmean: float):
-        """Validate constructor inputs for sensible ER graph generation."""
+        """Static method to validate constructor inputs for sensible ER graph generation.
+        @param num_nodes: Number of nodes in the graph.
+        @param kmean: Target mean degree.
+        @raises ValueError: If num_nodes <= 0 or kmean < 0.
+        """
         if num_nodes <= 0:
             raise ValueError("num_nodes must be greater than 0.")
         if kmean < 0:
@@ -50,7 +50,11 @@ class NetworkGenerator:
 
     @staticmethod
     def _calculate_edge_probability(num_nodes: int, kmean: float):
-        """Return the ER edge probability derived from kmean and node count."""
+        """Static method to calculate ER edge probability from node count and mean degree.
+        @param num_nodes: Number of nodes in the graph.
+        @param kmean: Target mean degree.
+        @return: Edge probability for the ER graph.
+        """
         if num_nodes <= 1:
             return 0.0
         return kmean / (num_nodes - 1)
@@ -61,20 +65,15 @@ class NetworkGenerator:
         max_attempts: int = 100,
     ):
         """
-        Generate an Erdos-Renyi G(N, p) random graph.
+        Method to generate an Erdos-Renyi G(N, p) random graph.
 
-        When *require_connected* is True the method retries until a connected
-        graph is produced or *max_attempts* is exhausted.
+        When require_connected is True, the method retries until a connected
+        graph is produced or max_attempts is exhausted.
 
         @param require_connected: Whether the returned graph must be connected.
-        @type  require_connected: bool
-        @param max_attempts: Maximum generation attempts when connectivity is
-            required.
-        @type  max_attempts: int
+        @param max_attempts: Maximum generation attempts when connectivity is required.
         @return: A random Erdos-Renyi graph.
-        @rtype:  nx.Graph
-        @raises ValueError: If a connected graph cannot be produced within
-            *max_attempts* tries.
+        @raises ValueError: If a connected graph cannot be produced within max_attempts tries.
         """
         if max_attempts <= 0:
             raise ValueError("max_attempts must be greater than 0.")
